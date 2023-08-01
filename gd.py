@@ -1,33 +1,32 @@
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telethon.sync import TelegramClient
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
-from telegram import Filters
 
+# تنظیمات ربات تلگرام
+api_id = 'YOUR_API_ID'
+api_hash = 'YOUR_API_HASH'
+bot_token = 'YOUR_BOT_TOKEN'
 
+# تنظیمات Google Drive
 gauth = GoogleAuth()
+gauth.LocalWebserverAuth()
 drive = GoogleDrive(gauth)
 
-def start(update, context):
-    update.message.reply_text('Please send me the link')
+# تابع برای آپلود فایل به Google Drive
+def upload_to_drive(file_path):
+    file_name = file_path.split('/')[-1]
+    gfile = drive.CreateFile({'title': file_name})
+    gfile.SetContentFile(file_path)
+    gfile.Upload()
 
-def link_handler(update, context):
-    url = update.message.text
-    file = drive.CreateFile({'title': 'My file'})
-    file.SetContentFromUrl(url)
-    file.Upload()
-    update.message.reply_text('File uploaded to Google Drive')
+# تابع برای دریافت لینک مستقیم فایل از ربات تلگرام
+def get_direct_link(file_path):
+    with TelegramClient('session_name', api_id, api_hash) as client:
+        result = client.send_file('me', file_path)
+        return result.media.document.url
 
-def main():
-    updater = Updater("YOUR_BOT_TOKEN", use_context=True)
-
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, link_handler))
-
-    updater.start_polling()
-
-    updater.idle()
-
-if __name__ == '__main__':
-    main()
+# مثال استفاده
+file_path = 'path/to/your/file.ext'
+direct_link = get_direct_link(file_path)
+upload_to_drive(file_path)
+print('Direct Link:', direct_link)
