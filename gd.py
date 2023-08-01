@@ -1,47 +1,31 @@
-import telebot
-from telebot import types
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 
-from google.oauth2 import service_account
-from googleapiclient.http import MediaFileUpload
-from googleapiclient.discovery import build
+gauth = GoogleAuth()
+drive = GoogleDrive(gauth)
 
-TELEGRAM_TOKEN = 'XXXXXXXXX:YYYYYYYYY'
-SERVICE_ACCOUNT_FILE = 'google-credentials.json'
+def start(update, context):
+    update.message.reply_text('Please send me the link')
 
-drive_service = build('drive', 'v3', credentials=service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)) 
+def link_handler(update, context):
+    url = update.message.text
+    file = drive.CreateFile({'title': 'My file'})
+    file.SetContentFromUrl(url)
+    file.Upload()
+    update.message.reply_text('File uploaded to Google Drive')
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
+def main():
+    updater = Updater("YOUR_BOT_TOKEN", use_context=True)
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-  print("Got start command")
-  bot.reply_to(message, "Hi, send me a file to upload")
+    dp = updater.dispatcher
 
-@bot.message_handler(content_types=['document'])
-def handle_doc(message):
-  print("Got document")
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, link_handler))
 
-  file_id = message.document.file_id
-  
-  file = bot.get_file(file_id)
+    updater.start_polling()
 
-  print("Downloading file...")
-  downloaded_file = bot.download_file(file.file_path)
+    updater.idle()
 
-  print("Uploading file to Google Drive...")
-
-  drive_file = drive_service.files().create(
-    media_body=MediaFileUpload(downloaded_file),
-    body={
-      'name': file.file_name
-    }
-  )
-
-  drive_file.execute()
-
-  print("Uploaded successfully!")
-
-  bot.reply_to(message, "File uploaded!")
-
-print("Bot started...")
-bot.polling()
+if __name__ == '__main__':
+    main()
