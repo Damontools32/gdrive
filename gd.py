@@ -1,32 +1,47 @@
-from telethon.sync import TelegramClient
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+import os
+import telebot
+from googleapiclient.http import MediaIoHttpDownload
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 
-# تنظیمات ربات تلگرام
-api_id = 'YOUR_API_ID'
-api_hash = 'YOUR_API_HASH'
-bot_token = 'YOUR_BOT_TOKEN'
+# Telegram bot token
+bot = telebot.TeleBot('YOUR_BOT_TOKEN')
 
-# تنظیمات Google Drive
-gauth = GoogleAuth()
-gauth.LocalWebserverAuth()
-drive = GoogleDrive(gauth)
+# If modifying these SCOPES, delete the file token.pickle.
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
-# تابع برای آپلود فایل به Google Drive
-def upload_to_drive(file_path):
-    file_name = file_path.split('/')[-1]
-    gfile = drive.CreateFile({'title': file_name})
-    gfile.SetContentFile(file_path)
-    gfile.Upload()
+creds = None
+# The file token.pickle stores the user's access and refresh tokens, and is
+# created automatically when the authorization flow completes for the first
+# time.
+if os.path.exists('token.pickle'):
+    with open('token.pickle', 'rb') as token:
+        creds = pickle.load(token)
+# If there are no (valid) credentials available, let the user log in.
+if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            'credentials.json', SCOPES)
+        creds = flow.run_local_server(port=0)
+    # Save the credentials for the next run
+    with open('token.pickle', 'wb') as token:
+        pickle.dump(creds, token)
 
-# تابع برای دریافت لینک مستقیم فایل از ربات تلگرام
-def get_direct_link(file_path):
-    with TelegramClient('session_name', api_id, api_hash) as client:
-        result = client.send_file('me', file_path)
-        return result.media.document.url
+drive_service = build('drive', 'v3', credentials=creds)
 
-# مثال استفاده
-file_path = 'path/to/your/file.ext'
-direct_link = get_direct_link(file_path)
-upload_to_drive(file_path)
-print('Direct Link:', direct_link)
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    file_id = message.text
+    request = drive_service.files().get_media(fileId=file_id)
+    fh = io.FileIO('myfile.txt', 'wb')
+    downloader = MediaIoHttpDownload(fh, request)
+    done = False
+    while done is False:
+        status, done = downloader.next_chunk()
+        print ("Download %d%%." % int(status.progress() * 100))
+    bot.reply_to(message, "File downloaded successfully!")
+
+bot.polling()
