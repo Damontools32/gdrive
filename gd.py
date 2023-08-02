@@ -1,47 +1,57 @@
-import os
 import telebot
-from googleapiclient.http import MediaIoHttpDownload
-from googleapiclient.discovery import build
+import os
+import requests
+from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
 
-# Telegram bot token
-bot = telebot.TeleBot('YOUR_BOT_TOKEN')
+TOKEN = 'YOUR_TELEGRAM_TOKEN'
+CLIENT_ID = 'YOUR_CLIENT_ID'
+CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
+API_NAME = 'drive'
+API_VERSION = 'v3'
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
-# If modifying these SCOPES, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/drive']
+# تنظیمات گوگل درایو
+def get_google_drive_service():
+    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+    creds = flow.run_local_server(port=0)
+    return build(API_NAME, API_VERSION, credentials=creds)
 
-creds = None
-# The file token.pickle stores the user's access and refresh tokens, and is
-# created automatically when the authorization flow completes for the first
-# time.
-if os.path.exists('token.pickle'):
-    with open('token.pickle', 'rb') as token:
-        creds = pickle.load(token)
-# If there are no (valid) credentials available, let the user log in.
-if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            'credentials.json', SCOPES)
-        creds = flow.run_local_server(port=0)
-    # Save the credentials for the next run
-    with open('token.pickle', 'wb') as token:
-        pickle.dump(creds, token)
+bot = telebot.TeleBot(TOKEN)
 
-drive_service = build('drive', 'v3', credentials=creds)
+@bot.message_handler(content_types=['text'])
+def handle_message(message):
+    if message.text.startswith('http'):
+        # دریافت لینک از پیام
+        link = message.text
+        
+        # دریافت سرویس گوگل درایو
+        drive_service = get_google_drive_service()
+        
+        # ایجاد یک فایل جدید در گوگل درایو
+        file_metadata = {
+            'name': 'file_name',
+            'mimeType': 'application/octet-stream'
+        }
+        file = drive_service.files().create(body=file_metadata).execute()
+        file_id = file.get('id')
+        
+        # دانلود فایل از لینک و آپلود آن به گوگل درایو
+        response = requests.get(link)
+        file_data = response.content
+        
+        # آپلود فایل به گوگل درایو
+        upload = drive_service.files().update(
+            fileId=file_id,
+            media_body=drive_service.media_io.MediaIoBaseUpload(io.BytesIO(file_data), mimetype='application/octet-stream'),
+        ).execute()
+        
+        # ایجاد پیام ارسالی به تلگرام
+        chat_id = message.chat.id
+        response_message = f"فایل با موفقیت آپلود شد.\nلینک دانلود: https://drive.google.com/file/d/{file_id}"
+        
+        # ارسال پیام به تلگرام
+        bot.send_message(chat_id, response_message)
 
-@bot.message_handler(func=lambda message: True)
-def echo_all(message):
-    file_id = message.text
-    request = drive_service.files().get_media(fileId=file_id)
-    fh = io.FileIO('myfile.txt', 'wb')
-    downloader = MediaIoHttpDownload(fh, request)
-    done = False
-    while done is False:
-        status, done = downloader.next_chunk()
-        print ("Download %d%%." % int(status.progress() * 100))
-    bot.reply_to(message, "File downloaded successfully!")
-
-bot.polling()
+bot.polling(none_stop=True)
