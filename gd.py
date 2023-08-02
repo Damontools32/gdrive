@@ -1,43 +1,23 @@
 import telebot
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-import os
-import requests
+import re
 
-# تنظیمات مربوط به ربات تلگرام
-TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot("TOKEN")
 
-# تنظیمات مربوط به گوگل درایو
-CLIENT_ID = 'YOUR_CLIENT_ID'
-CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
-SCOPES = ['https://www.googleapis.com/auth/drive']
-REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
+@bot.message_handler(func=lambda msg: msg.text.startswith("https://drive.google.com"))
+def get_filename(message):
+  bot.reply_to(message, "لطفا نام فایل را بفرستید:")
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    if message.text.startswith('https://'):
-        url = message.text
-        upload_to_drive(url)
-        bot.reply_to(message, 'لینک با موفقیت در گوگل درایو آپلود شد!')
-    else:
-        bot.reply_to(message, 'لطفا یک لینک ارسال کنید.')
+  @bot.message_handler(func=lambda msg: True) 
+  def send_download_link(message):
+    filename = message.text
+    file_id = re.search(r"/d/(.+)", message.text).group(1)
 
-def upload_to_drive(url):
-    flow = InstalledAppFlow.from_client_secrets_file(
-        'credentials.json',
-        SCOPES,
-        redirect_uri=REDIRECT_URI
+    download_link = f"https://drive.google.com/uc?id={file_id}" 
+    
+    bot.send_message(
+      message.chat.id,
+      f"لینک دانلود <a href='{download_link}'>{filename}</a>",
+      parse_mode='HTML'
     )
 
-    creds = flow.run_local_server(port=0)
-
-    headers = {
-        'Authorization': f'Bearer {creds.token}',
-        'Content-Type': 'application/x-www-form-urlencoded'
-    }
-
-    params = {
-        'name': os.path.basename(url),
-        'parents': ['YOUR_PARENT_FOLDER_ID']
-    }
+bot.polling()
